@@ -112,13 +112,7 @@ void setup()
         varArray.setupSensors();
     }
 
-    modem.setModemWakeLevel(HIGH);  // ModuleFun Bee inverts the signal
-    modem.setModemResetLevel(HIGH); // ModuleFun Bee inverts the signal
-    Serial.println(F("Waking modem and setting Cellular Carrier Options..."));
-    modem.modemWake();                 // NOTE:  This will also set up the modem
-    modem.gsmModem.setBaud(modemBaud); // Make sure we're *NOT* auto-bauding!
-    modem.gsmModem.setNetworkMode(NETWORK_MODE_GSM_ONLY);
-    modem.gsmModem.setPreferredMode(PREFERRED_MODE_CAT_M);
+    setupModem(modem);
 
     // Sync the clock if it isn't valid or we have battery to spare
     if (getBatteryVoltage(mcuBoard) > BATTERY_VOLTAGE_MODERATE || !dataLogger.isRTCSane())
