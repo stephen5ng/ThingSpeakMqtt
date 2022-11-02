@@ -2,14 +2,12 @@
 #include <Arduino.h>
 #include <EnableInterrupt.h>
 #include <ModularSensors.h>
-#include <modems/SIMComSIM7080.h>
 #include <sensors/ProcessorStats.h>
 #include <sensors/MaximDS3231.h>
+#include <sensors/MeterHydros21.h>
 #include "ThingSpeakPublisher.h"
-
-// Note:  Please change these battery voltages to match your battery
-#define BATTERY_VOLTAGE_LOW 3.4
-#define BATTERY_VOLTAGE_MODERATE 3.55
+#include "battery.h"
+#include "modem.h"
 
 const char *LoggerID = "logger"; // Logger ID and prefix for the name of the data file on SD card
 const uint8_t loggingIntervalMinutes = 1;
@@ -30,25 +28,6 @@ const int8_t wakePin = 31; // MCU interrupt/alarm pin to wake from sleep
 const int8_t sdCardPwrPin = -1;   // MCU SD card power pin
 const int8_t sdCardSSPin = 12;    // SD card chip select/slave select pin
 const int8_t sensorPowerPin = 22; // MCU pin controlling main sensor power
-
-#define modemSerial Serial1
-
-const int32_t modemBaud = 9600; //  SIM7080 does auto-bauding by default, but for simplicity we set to 9600
-
-// Modem Pins - Describe the physical pin connection of your modem to your board
-// NOTE:  Use -1 for pins that do not apply
-
-const int8_t modemVccPin = 18;     // MCU pin controlling modem power --- Pin 18 is the power enable pin for the bee socket on Mayfly v1.0,
-                                   //  use -1 if using Mayfly 0.5b or if the bee socket is constantly powered (ie you changed SJ18 on Mayfly1.0 to 3.3v)
-const int8_t modemStatusPin = 19;  // MCU pin used to read modem status
-const int8_t modemSleepRqPin = 23; // MCU pin for modem sleep/wake request
-const int8_t modemLEDPin = redLED; // MCU pin connected an LED to show modem status
-
-const char *apn = "hologram"; // APN connection name, typically Hologram unless you have a different provider's SIM card. Change as needed
-
-SIMComSIM7080 modem7080(&modemSerial, modemVccPin, modemStatusPin,
-                        modemSleepRqPin, apn);
-SIMComSIM7080 modem = modem7080;
 
 // Create the main processor chip "sensor" - for general metadata
 const char *mcuBoardVersion = "v0.5b"; // is only used for onboard battery voltage calculation,
@@ -81,14 +60,6 @@ void greenredflash(uint8_t numFlash = 4, uint8_t rate = 75)
     digitalWrite(redLED, LOW);
 }
 
-// Reads the battery voltage
-// NOTE: This will actually return the battery level from the previous update!
-float getBatteryVoltage()
-{
-    if (mcuBoard.sensorValues[0] == -9999)
-        mcuBoard.update();
-    return mcuBoard.sensorValues[0];
-}
 
 void setup()
 {
@@ -123,7 +94,7 @@ void setup()
     Logger::setRTCTimeZone(0);
 
     dataLogger.attachModem(modem);
-    modem.setModemLED(modemLEDPin);
+    modem.setModemLED(redLED);
     dataLogger.setLoggerPins(wakePin, sdCardSSPin, sdCardPwrPin, buttonPin,
                              greenLED);
 
@@ -135,7 +106,7 @@ void setup()
                  MQTT_PASSWORD,
                  MQTT_CLIENT_ID);
 
-    if (getBatteryVoltage() > BATTERY_VOLTAGE_LOW)
+    if (getBatteryVoltage(mcuBoard) > BATTERY_VOLTAGE_LOW)
     {
         Serial.println(F("Setting up sensors..."));
         varArray.setupSensors();
@@ -150,7 +121,7 @@ void setup()
     modem.gsmModem.setPreferredMode(PREFERRED_MODE_CAT_M);
 
     // Sync the clock if it isn't valid or we have battery to spare
-    if (getBatteryVoltage() > BATTERY_VOLTAGE_MODERATE || !dataLogger.isRTCSane())
+    if (getBatteryVoltage(mcuBoard) > BATTERY_VOLTAGE_MODERATE || !dataLogger.isRTCSane())
     {
         // Synchronize the RTC with NIST
         // This will also set up the modem
@@ -162,7 +133,7 @@ void setup()
     // all sensor names correct
     // Writing to the SD card can be power intensive, so if we're skipping
     // the sensor setup we'll skip this too.
-    if (getBatteryVoltage() > BATTERY_VOLTAGE_LOW)
+    if (getBatteryVoltage(mcuBoard) > BATTERY_VOLTAGE_LOW)
     {
         Serial.println(F("Setting up file on SD card"));
         dataLogger.turnOnSDcard(true);  // wait for card to settle after power up
@@ -177,12 +148,12 @@ void setup()
 void loop()
 {
     // At very low battery, just go back to sleep
-    if (getBatteryVoltage() < BATTERY_VOLTAGE_LOW)
+    if (getBatteryVoltage(mcuBoard) < BATTERY_VOLTAGE_LOW)
     {
         dataLogger.systemSleep();
     }
     // At moderate voltage, log data but don't send it over the modem
-    else if (getBatteryVoltage() < BATTERY_VOLTAGE_MODERATE)
+    else if (getBatteryVoltage(mcuBoard) < BATTERY_VOLTAGE_MODERATE)
     {
         dataLogger.logData();
     }
