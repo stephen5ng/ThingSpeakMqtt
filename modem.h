@@ -8,8 +8,6 @@
 
 const int32_t modemBaud = 9600; //  SIM7080 does auto-bauding by default, but for simplicity we set to 9600
 
-extern SIMComSIM7080 modem;
-
 void setupModem(SIMComSIM7080 &modem);
 
 #endif

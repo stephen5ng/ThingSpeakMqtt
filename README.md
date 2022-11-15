@@ -25,3 +25,5 @@ platformio.ini should look something like this:
     lib_deps =
         EnviroDIY_ModularSensors
         vshymanskyy/TinyGSM@^0.11.5
+
+Data published to: https://thingspeak.com/channels/1851144

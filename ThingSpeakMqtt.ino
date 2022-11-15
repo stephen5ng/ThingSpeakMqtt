@@ -1,110 +1,88 @@
+#include <SPI.h>
 #include "GsmClient.h"
 #include <Arduino.h>
 #include <EnableInterrupt.h>
 #include <ModularSensors.h>
 #include <sensors/ProcessorStats.h>
-#include <sensors/MaximDS3231.h>
-#include <sensors/MeterHydros21.h>
+#include <ArduinoJson.h>
+#include <TimeLib.h>
+#include "Config.h"
+#include "DummyModem.h"
+#include "Mayfly.h"
+#include "Modem.h"
+#include "PumpPublisher.h"
+#include "SafeThingSpeakPublisher.h"
+#include "StubVariable.h"
 #include "ThingSpeakPublisher.h"
-#include "battery.h"
-#include "modem.h"
+
+using namespace std;
 
 const char *LoggerID = "logger"; // Logger ID and prefix for the name of the data file on SD card
 const uint8_t loggingIntervalMinutes = 1;
 
-// NOTE:  Daylight savings time will not be applied!  Please use standard time!
-const int8_t timeZone = -8; // Pacific Standard Time
-
-// NOTE:  Use -1 for pins that do not apply
-const int32_t serialBaud = 115200;
-const int8_t greenLED = 8;
-const int8_t redLED = 9;
-const int8_t buttonPin = 21;
-const int8_t wakePin = 31; // MCU interrupt/alarm pin to wake from sleep
-// Mayfly 0.x D31 = A7
-// Set the wake pin to -1 if you do not want the main processor to sleep.
-// In a SAMD system where you are using the built-in rtc, set wakePin to 1
-
-const int8_t sdCardPwrPin = -1;   // MCU SD card power pin
-const int8_t sdCardSSPin = 12;    // SD card chip select/slave select pin
-const int8_t sensorPowerPin = 22; // MCU pin controlling main sensor power
-
-// Create the main processor chip "sensor" - for general metadata
-const char *mcuBoardVersion = "v0.5b"; // is only used for onboard battery voltage calculation,
-                                       // "v0.5b" is safe to use on Mayfly v1.0 boards because the formula is the same
 ProcessorStats mcuBoard(mcuBoardVersion);
 
-MaximDS3231 ds3231(1);
+const float water_level_values[] = {1.0, 2, 8, 13, 127};
+Variable *water_level = new StubVariable("WATER_LEVEL",
+                                         water_level_values,
+                                         sizeof(water_level_values) / sizeof(water_level_values[0]));
 
-Variable *variableList[] = {
-    new ProcessorStats_Battery(&mcuBoard),
-};
-int variableCount = sizeof(variableList) / sizeof(variableList[0]);
+const float salinity_values[] = {3, 4, 5, 5, 4, 3};
+Variable *salinity = new StubVariable("SALINITY", salinity_values,
+                                      sizeof(salinity_values) / sizeof(salinity_values[0]));
+
 VariableArray varArray;
 
 Logger dataLogger(LoggerID, loggingIntervalMinutes, &varArray);
 
-ThingSpeakPublisher TsMqtt;
-
-void greenredflash(uint8_t numFlash = 4, uint8_t rate = 75)
-{
-    for (uint8_t i = 0; i < numFlash; i++)
-    {
-        digitalWrite(greenLED, HIGH);
-        digitalWrite(redLED, LOW);
-        delay(rate);
-        digitalWrite(greenLED, LOW);
-        digitalWrite(redLED, HIGH);
-        delay(rate);
-    }
-    digitalWrite(redLED, LOW);
-}
-
+SafeThingSpeakPublisher tsMqtt(modem);
 
 void setup()
 {
     // Start the primary serial connection
     Serial.begin(serialBaud);
 
-    // Print a start-up note to the first serial port
-    Serial.print(F("Now running "));
-    Serial.print(F(" on Logger "));
-    Serial.println(LoggerID);
-    Serial.println();
+    PRINTOUT(F("Now running on Logger "), LoggerID, "\n");
 
     Serial.print(F("Using ModularSensors Library version "));
     Serial.println(MODULAR_SENSORS_VERSION);
     Serial.print(F("TinyGSM Library version "));
     Serial.println(TINYGSM_VERSION);
-    Serial.println();
 
-    // Start the serial connection with the modem
+    JsonDocument *json = loadConfiguration("/config.txt");
+
+    static Variable *variableList[] = {
+        water_level,
+        salinity,
+    };
+    int variableCount = sizeof(variableList) / sizeof(variableList[0]);
+
     modemSerial.begin(modemBaud);
 
     pinMode(greenLED, OUTPUT);
     digitalWrite(greenLED, LOW);
     pinMode(redLED, OUTPUT);
     digitalWrite(redLED, LOW);
-    greenredflash(); // Blink the LEDs to show the board is on and starting up
+    greenredflash(4, 75); // Blink the LEDs to show the board is on and starting up
 
     pinMode(20, OUTPUT); // for proper operation of the onboard flash memory chip's ChipSelect (Mayfly v1.0 and later)
 
-    Logger::setLoggerTimeZone(timeZone);
-    // It is STRONGLY RECOMMENDED that you set the RTC to be in UTC (UTC+0)
-    Logger::setRTCTimeZone(0);
+    Logger::setRTCTimeZone(0); // It is STRONGLY RECOMMENDED that you set the RTC to be in UTC (UTC+0)
 
     dataLogger.attachModem(modem);
     modem.setModemLED(redLED);
-    dataLogger.setLoggerPins(wakePin, sdCardSSPin, sdCardPwrPin, buttonPin,
-                             greenLED);
+    dataLogger.setLoggerPins(wakePin, sdCardSSPin, sdCardPwrPin, buttonPin, greenLED);
 
-    varArray.begin(variableCount, variableList);
+    PumpPublisher *pumpPublisher = new PumpPublisher(water_level, salinity, (*json)["storm_start_time"], 12, 4);
+
+    varArray.begin(variableCount, variableList, UUIDs);
     dataLogger.begin(LoggerID, loggingIntervalMinutes, &varArray);
-    TsMqtt.begin(dataLogger, &modem.gsmClient,
+    tsMqtt.begin(dataLogger, &modem.gsmClient,
                  THINGSPEAK_CHANNEL_ID,
                  MQTT_USERNAME,
                  MQTT_PASSWORD,
                  MQTT_CLIENT_ID);
+    pumpPublisher->begin(dataLogger, &modem.gsmClient);
 
     if (getBatteryVoltage(mcuBoard) > BATTERY_VOLTAGE_LOW)
     {
@@ -154,7 +132,6 @@ void loop()
     // If the battery is good, send the data to the world
     else
     {
-        Serial.println(F("dataLogger.logDataAndPublish()\n"));
         dataLogger.logDataAndPublish();
     }
 }

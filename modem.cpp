@@ -1,5 +1,6 @@
 #include "GsmClient.h"
-#include "modem.h"
+#include "DummyModem.h"
+#include "Modem.h"
 
 // Modem Pins - Describe the physical pin connection of your modem to your board
 // NOTE:  Use -1 for pins that do not apply
@@ -9,14 +10,14 @@ const int8_t modemStatusPin = 19;  // MCU pin used to read modem status
 const int8_t modemSleepRqPin = 23; // MCU pin for modem sleep/wake request
 
 const char *apn = "hologram"; // APN connection name, typically Hologram unless you have a different provider's SIM card. Change as needed
-SIMComSIM7080 modem(&modemSerial, modemVccPin, modemStatusPin,
-                    modemSleepRqPin, apn);
+
+DummyModem modem(&modemSerial, modemVccPin, modemStatusPin, modemSleepRqPin, apn);
 
 void setupModem(SIMComSIM7080 &modem)
 {
     modem.setModemWakeLevel(HIGH);  // ModuleFun Bee inverts the signal
     modem.setModemResetLevel(HIGH); // ModuleFun Bee inverts the signal
-    Serial.println(F("Waking modem and setting Cellular Carrier Options..."));
+    PRINTOUT(F("Waking modem and setting Cellular Carrier Options..."));
     modem.modemWake();                 // NOTE:  This will also set up the modem
     modem.gsmModem.setBaud(modemBaud); // Make sure we're *NOT* auto-bauding!
     modem.gsmModem.setNetworkMode(NETWORK_MODE_GSM_ONLY);
