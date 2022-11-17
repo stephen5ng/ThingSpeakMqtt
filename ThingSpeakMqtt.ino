@@ -35,7 +35,7 @@ VariableArray varArray;
 
 Logger dataLogger(LoggerID, loggingIntervalMinutes, &varArray);
 
-SafeThingSpeakPublisher tsMqtt(modem);
+SafeThingSpeakPublisher safeThingSpeakPublisher(modem);
 
 void setup()
 {
@@ -77,11 +77,11 @@ void setup()
 
     varArray.begin(variableCount, variableList, UUIDs);
     dataLogger.begin(LoggerID, loggingIntervalMinutes, &varArray);
-    tsMqtt.begin(dataLogger, &modem.gsmClient,
-                 THINGSPEAK_CHANNEL_ID,
-                 MQTT_USERNAME,
-                 MQTT_PASSWORD,
-                 MQTT_CLIENT_ID);
+    safeThingSpeakPublisher.begin(dataLogger, &modem.gsmClient,
+                                  THINGSPEAK_CHANNEL_ID,
+                                  MQTT_USERNAME,
+                                  MQTT_PASSWORD,
+                                  MQTT_CLIENT_ID);
     pumpPublisher->begin(dataLogger, &modem.gsmClient);
 
     if (getBatteryVoltage(mcuBoard) > BATTERY_VOLTAGE_LOW)
