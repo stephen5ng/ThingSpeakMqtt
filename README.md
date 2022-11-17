@@ -27,3 +27,8 @@ platformio.ini should look something like this:
         vshymanskyy/TinyGSM@^0.11.5
 
 Data published to: https://thingspeak.com/channels/1851144
+
+config.txt should be in the root directory of the sd flash card and look like this:
+    {
+      "storm_start_time": 1668100500
+    }
