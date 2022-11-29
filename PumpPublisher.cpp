@@ -28,6 +28,11 @@ int PumpPublisher::findVariable(Variable *v)
 
 void PumpPublisher::maybeStartPump(time_t now)
 {
+    // Pump already started.
+    if (_pump_started_time > 0 || _pump_stopped_time > 0) {
+        return;
+    }
+
     if (now < _storm_start_time)
     {
         PRINTOUT(F("Waiting for storm to start. start_time:"), formatEpochTime(_storm_start_time),
@@ -58,31 +63,24 @@ void PumpPublisher::maybeStartPump(time_t now)
 
 void PumpPublisher::maybeStopPump(time_t now)
 {
-    if (_pump_started_time == 0)
+    if (_pump_started_time == 0 || _pump_stopped_time != 0)
     {
-        return; // pump hasn't started yet
+        return;
     }
+    PRINTOUT(F("Pump running for: "), now - _pump_started_time);
 
-    if (now - _pump_started_time > 10000)
+    if (now - _pump_started_time > 60)
     {
         PRINTOUT(F("Turning off pump!"));
-        _pump_started_time = 0;
+        _pump_stopped_time = now;
     }
 }
 
-/// @brief  Set Pump state
-/// @param outClient internet client: ignored
-/// @return unused, appears to be ignored by callers
-int16_t PumpPublisher::publishData(Client *outClient)
+void PumpPublisher::pump()
 {
-    PRINTOUT(F("PumpPublisher Publishing-----------------"),
-             _baseLogger->getValueStringAtI(_water_level_i), " / ",
-             _baseLogger->getParentSensorNameAtI(_water_level_i));
-
     time_t now = rtc.now().getEpoch();
     maybeStartPump(now);
     maybeStopPump(now);
-    return 0;
 }
 
 String PumpPublisher::getEndpoint(void)

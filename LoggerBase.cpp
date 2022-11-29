@@ -643,7 +643,7 @@ bool Logger::checkInterval(void) {
     MS_DBG(F("Mod of Logging Interval:"),
            checkTime % (_loggingIntervalMinutes * 60));
 
-    if (checkTime % (_loggingIntervalMinutes * 60) == 0) {
+    if (checkTime % (_loggingIntervalMinutes * 60) == 0 || _mcuWakePin < 0) {
         // Update the time variables with the current time
         markTime();
         MS_DBG(F("Time marked at (unix):"), Logger::markedLocalEpochTime);
@@ -1582,7 +1582,7 @@ void Logger::logDataAndPublish(void) {
                          Logger::markedLocalEpochTime % 86400 == 43200) ||
                         !isRTCSane(Logger::markedLocalEpochTime)) {
                         // Sync the clock at noon
-                        MS_DBG(F("Running a daily clock sync..."));
+                        MS_DBG(F("NOON! Running a daily clock sync..."));
                         setRTClock(_logModem->getNISTTime());
                         watchDogTimer.resetWatchDog();
                     }

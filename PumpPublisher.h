@@ -17,6 +17,7 @@ private:
     const double _max_salinity;
 
     time_t _pump_started_time;
+    time_t _pump_stopped_time;
 
     float getValue(int i);
     int findVariable(Variable *v);
@@ -34,11 +35,12 @@ public:
           _storm_start_time(storm_start_time),
           _min_flow_level(min_flow_level),
           _max_salinity(max_salinity),
-          _pump_started_time(0)
+          _pump_started_time(0), _pump_stopped_time(0)
     {
     }
 
-    int16_t publishData(Client *outClient);
+    int16_t publishData(Client *outClient) { return 0; }
+    void pump(void);
 
     String getEndpoint(void) override;
 

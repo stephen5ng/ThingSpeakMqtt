@@ -8,6 +8,7 @@
 #include <TimeLib.h>
 #include "Config.h"
 #include "DummyModem.h"
+#include "InsomniacDataLogger.h"
 #include "Mayfly.h"
 #include "Modem.h"
 #include "PumpPublisher.h"
@@ -19,6 +20,7 @@ using namespace std;
 
 const char *LoggerID = "logger"; // Logger ID and prefix for the name of the data file on SD card
 const uint8_t loggingIntervalMinutes = 1;
+const uint16_t microIntervalMs = 5000;
 
 ProcessorStats mcuBoard(mcuBoardVersion);
 
@@ -33,9 +35,13 @@ Variable *salinity = new StubVariable("SALINITY", salinity_values,
 
 VariableArray varArray;
 
-Logger dataLogger(LoggerID, loggingIntervalMinutes, &varArray);
+InsomniacDataLogger dataLogger(LoggerID, loggingIntervalMinutes, &varArray);
 
 SafeThingSpeakPublisher safeThingSpeakPublisher(modem);
+
+time_t stormStartTime;
+time_t stormEndTime;
+PumpPublisher *pumpPublisher;
 
 void setup()
 {
@@ -72,8 +78,9 @@ void setup()
     dataLogger.attachModem(modem);
     modem.setModemLED(redLED);
     dataLogger.setLoggerPins(wakePin, sdCardSSPin, sdCardPwrPin, buttonPin, greenLED);
-
-    PumpPublisher *pumpPublisher = new PumpPublisher(water_level, salinity, (*json)["storm_start_time"], 12, 4);
+    stormStartTime = (*json)["storm_start_time"];
+    stormEndTime = (*json)["storm_end_time"];
+    pumpPublisher = new PumpPublisher(water_level, salinity, stormStartTime, 12, 4);
 
     varArray.begin(variableCount, variableList, UUIDs);
     dataLogger.begin(LoggerID, loggingIntervalMinutes, &varArray);
@@ -112,13 +119,31 @@ void setup()
         dataLogger.createLogFile(true); // write a new header
         dataLogger.turnOffSDcard(true); // wait for internal housekeeping after write
     }
-
-    Serial.println(F("Putting processor to sleep\n"));
-    dataLogger.systemSleep();
 }
 
 void loop()
 {
+    time_t now_epoch = rtc.now().getEpoch();
+    if (now_epoch >= stormStartTime && now_epoch < stormEndTime)
+    {
+        dataLogger.enableSleep(false);
+        static time_t last_millis = 0;
+        time_t now_ms = millis();
+
+        // Don't run more than once per micro-interval.
+        if (now_ms - last_millis < microIntervalMs)
+        {
+            return;
+        }
+        last_millis = now_ms;
+
+        dataLogger.logData();
+        pumpPublisher->pump();
+        return;
+    }
+
+    dataLogger.enableSleep(true);
+
     // At very low battery, just go back to sleep
     if (getBatteryVoltage(mcuBoard) < BATTERY_VOLTAGE_LOW)
     {
