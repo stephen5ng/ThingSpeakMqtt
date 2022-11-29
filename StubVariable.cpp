@@ -4,7 +4,8 @@ class StubSensor : public Sensor
 {
 private:
     const float *_values;
-    const unsigned int _size;
+    const uint8_t _size;
+    const uint16_t _update_interval_ms = 15000;
 
 public:
     explicit StubSensor(const char *name, const float *values, int size)
@@ -18,14 +19,9 @@ public:
 
 bool StubSensor::addSingleMeasurementResult(void)
 {
-    static unsigned int index = 0;
-    if (index >= _size)
-    {
-        index = 0;
-    }
-    // MS_DBG(F("next_value:"), index, _values[index]);
+    unsigned int index = (millis() / 15000) % _size;
     PRINTOUT(F("StubSensor adding Test Sensor result: "), _sensorName,
-             "[", index, "] : ", _values[index], F("\n"));
+             "[", index, "] : ", _values[index]);
 
     // PRINTOUT("getting next_value: ");
     verifyAndAddMeasurementResult(0, _values[index++]);
